@@ -33,23 +33,23 @@ GridOps is an autonomous multi-agent system that analyzes distribution network c
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                    LangGraph Orchestrator                    │
+│                    LangGraph Orchestrator                   │
 ├─────────────────────────────────────────────────────────────┤
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐   │
-│  │ Planner  │→ │PowerFlow │→ │Constraint│→ │Explainer │   │
-│  │  Agent   │  │   Agent  │  │ Checker  │  │  Agent   │   │
-│  └──────────┘  └──────────┘  └──────────┘  └──────────┘   │
-│       ↓              ↓              ↓              ↑         │
-│  ┌─────────────────────────────────────────────────────┐   │
-│  │              Retrieval Agent                         │   │
-│  │         (Standards & References)                     │   │
-│  └─────────────────────────────────────────────────────┘   │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐     │
+│  │ Planner  │→ │PowerFlow │→ │Constraint│→ │Explainer │     │
+│  │  Agent   │  │   Agent  │  │ Checker  │  │  Agent   │     │
+│  └──────────┘  └──────────┘  └──────────┘  └──────────┘     │
+│       ↓              ↓              ↓              ↑        │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │              Retrieval Agent                        │    │
+│  │         (Standards & References)                    │    │
+│  └─────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────┘
                             ↓
 ┌─────────────────────────────────────────────────────────────┐
-│               Power System Analysis Layer                    │
+│               Power System Analysis Layer                   │
 │  • pandapower (Power Flow)  • NetworkX (Topology)           │
-│  • Constraint Validation    • Network Analysis               │
+│  • Constraint Validation    • Network Analysis              │
 └─────────────────────────────────────────────────────────────┘
 ```
 
