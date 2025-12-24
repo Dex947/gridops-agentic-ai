@@ -3,9 +3,20 @@ Core modules for GridOps Agentic AI System.
 Includes network loading, contingency simulation, and state management.
 """
 
-from .network_loader import NetworkLoader, create_test_network
+from .case_database import (
+    CaseDatabase,
+    CaseSearchResult,
+    HistoricalCase,
+    create_case_database,
+)
 from .contingency_simulator import ContingencySimulator, ContingencyType
-from .state_manager import StateManager, SystemState
+from .network_loader import NetworkLoader, create_test_network
+from .state_manager import (
+    ActionPlanValidationError,
+    StateManager,
+    SystemState,
+    validate_action_plan,
+)
 
 __all__ = [
     "NetworkLoader",
@@ -14,4 +25,10 @@ __all__ = [
     "ContingencyType",
     "StateManager",
     "SystemState",
+    "ActionPlanValidationError",
+    "validate_action_plan",
+    "CaseDatabase",
+    "HistoricalCase",
+    "CaseSearchResult",
+    "create_case_database",
 ]

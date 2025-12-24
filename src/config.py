@@ -1,18 +1,16 @@
-"""
-Configuration management for GridOps Agentic AI System.
-Handles environment variables, system parameters, and constraint definitions.
-"""
+"""Configuration management using pydantic-settings."""
 
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Any, Dict, Optional
+
+from loguru import logger
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from loguru import logger
 
 
 class SystemConfig(BaseSettings):
-    """System-wide configuration with environment variable support."""
-    
+    """System configuration from environment variables."""
+
     model_config = SettingsConfigDict(
         env_file='.env',
         env_file_encoding='utf-8',
@@ -20,55 +18,67 @@ class SystemConfig(BaseSettings):
         extra='ignore',
         protected_namespaces=()
     )
-    
+
     # LLM Configuration
     openai_api_key: Optional[str] = Field(default=None, alias='OPENAI_API_KEY')
     anthropic_api_key: Optional[str] = Field(default=None, alias='ANTHROPIC_API_KEY')
     llm_provider: str = Field(default='openai', alias='LLM_PROVIDER')
     model_name: str = Field(default='gpt-4-turbo-preview', alias='MODEL_NAME')
     temperature: float = Field(default=0.1, alias='TEMPERATURE')
-    
+
     # System Behavior
     log_level: str = Field(default='INFO', alias='LOG_LEVEL')
     max_iterations: int = Field(default=10, alias='MAX_ITERATIONS')
     timeout_seconds: int = Field(default=300, alias='TIMEOUT_SECONDS')
-    
+
     # Network Configuration
     default_network: str = Field(default='ieee_123', alias='DEFAULT_NETWORK')
     voltage_tolerance_pu: float = Field(default=0.05, alias='VOLTAGE_TOLERANCE_PU')
     thermal_margin_percent: float = Field(default=20.0, alias='THERMAL_MARGIN_PERCENT')
     max_load_shed_percent: float = Field(default=30.0, alias='MAX_LOAD_SHED_PERCENT')
-    
+
     # Report Configuration
     report_format: str = Field(default='markdown', alias='REPORT_FORMAT')
     generate_plots: bool = Field(default=True, alias='GENERATE_PLOTS')
     plot_dpi: int = Field(default=300, alias='PLOT_DPI')
-    
+
     # State Management
     state_persistence: bool = Field(default=True, alias='STATE_PERSISTENCE')
     memory_retention_hours: int = Field(default=24, alias='MEMORY_RETENTION_HOURS')
 
+    # Analysis Configuration (moved from magic numbers)
+    max_reconfiguration_combinations: int = Field(default=1000, alias='MAX_RECONFIG_COMBINATIONS')
+    max_contingency_combinations: int = Field(default=500, alias='MAX_CONTINGENCY_COMBINATIONS')
+    parallel_workers: int = Field(default=4, alias='PARALLEL_WORKERS')
+    der_curtailment_step: float = Field(default=0.1, alias='DER_CURTAILMENT_STEP')
+    hosting_capacity_step_kw: float = Field(default=10.0, alias='HOSTING_CAPACITY_STEP_KW')
+    timeseries_default_timestep_minutes: int = Field(default=60, alias='TIMESERIES_TIMESTEP_MINUTES')
+
+    # Security Configuration
+    api_key_rotation_days: int = Field(default=90, alias='API_KEY_ROTATION_DAYS')
+    mask_api_keys_in_logs: bool = Field(default=True, alias='MASK_API_KEYS_IN_LOGS')
+
 
 class NetworkConstraints:
-    """Power system operational constraints."""
-    
+    """Operational constraints for power system analysis."""
+
     def __init__(self, config: SystemConfig):
         self.config = config
-        
+
         # Voltage constraints (per-unit)
         self.v_min_pu = 1.0 - config.voltage_tolerance_pu
         self.v_max_pu = 1.0 + config.voltage_tolerance_pu
-        
+
         # Thermal constraints
         self.thermal_margin = config.thermal_margin_percent / 100.0
-        
+
         # Load shedding constraints
         self.max_load_shed = config.max_load_shed_percent / 100.0
-        
+
         # Protection coordination
         self.min_coordination_time_sec = 0.3  # Minimum time interval between devices
         self.max_fault_clearing_time_sec = 2.0
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Export constraints as dictionary."""
         return {
@@ -93,12 +103,12 @@ class NetworkConstraints:
 
 
 class PathConfig:
-    """Project directory paths."""
-    
+    """Project directory structure."""
+
     def __init__(self, base_path: Optional[Path] = None):
         if base_path is None:
             base_path = Path(__file__).parent.parent
-        
+
         self.base = base_path
         self.src = base_path / "src"
         self.data = base_path / "data"
@@ -113,19 +123,19 @@ class PathConfig:
         self.notebooks = base_path / "notebooks"
         self.tests = base_path / "tests"
         self.docs = base_path / "docs"
-        
+
         # Create directories if they don't exist
         self._create_directories()
-    
+
     def _create_directories(self):
-        """Create all necessary directories."""
+        """Ensure all directories exist."""
         for path in [
             self.data, self.networks, self.ieee_feeders, self.references,
             self.models, self.knowledge_base, self.reports, self.plots,
             self.logs, self.notebooks, self.tests, self.docs
         ]:
             path.mkdir(parents=True, exist_ok=True)
-    
+
     def to_dict(self) -> Dict[str, str]:
         """Export paths as dictionary."""
         return {
@@ -139,9 +149,9 @@ class PathConfig:
 
 
 def setup_logging(config: SystemConfig, paths: PathConfig):
-    """Configure logging with loguru."""
+    """Initialize loguru with console and file handlers."""
     logger.remove()  # Remove default handler
-    
+
     # Console logging
     logger.add(
         sink=lambda msg: print(msg, end=""),
@@ -149,7 +159,7 @@ def setup_logging(config: SystemConfig, paths: PathConfig):
         format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan> - <level>{message}</level>",
         colorize=True
     )
-    
+
     # File logging
     log_file = paths.logs / "gridops_{time:YYYY-MM-DD}.log"
     logger.add(
@@ -160,40 +170,40 @@ def setup_logging(config: SystemConfig, paths: PathConfig):
         retention="30 days",
         compression="zip"
     )
-    
+
     logger.info("Logging system initialized")
     logger.info(f"Log level: {config.log_level}")
     logger.info(f"Log directory: {paths.logs}")
 
 
 def load_configuration() -> tuple[SystemConfig, NetworkConstraints, PathConfig]:
-    """Load all configurations."""
+    """Load and return system config, constraints, and paths."""
     system_config = SystemConfig()
     paths = PathConfig()
     constraints = NetworkConstraints(system_config)
-    
+
     setup_logging(system_config, paths)
-    
+
     logger.info("Configuration loaded successfully")
     logger.info(f"LLM Provider: {system_config.llm_provider}")
     logger.info(f"Model: {system_config.model_name}")
     logger.info(f"Default Network: {system_config.default_network}")
-    
+
     return system_config, constraints, paths
 
 
 if __name__ == "__main__":
     # Test configuration loading
     config, constraints, paths = load_configuration()
-    
+
     print("\n=== System Configuration ===")
     print(f"LLM Provider: {config.llm_provider}")
     print(f"Model: {config.model_name}")
     print(f"Temperature: {config.temperature}")
-    
+
     print("\n=== Network Constraints ===")
     import json
     print(json.dumps(constraints.to_dict(), indent=2))
-    
+
     print("\n=== Paths ===")
     print(json.dumps(paths.to_dict(), indent=2))

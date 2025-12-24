@@ -1,19 +1,14 @@
-"""
-Retrieval Agent - Accesses IEEE standards, historical data, and technical references.
-"""
+"""Retrieval Agent for IEEE standards and technical references."""
 
-from typing import List, Dict, Any, Optional
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
 from loguru import logger
-import json
 
 
 class RetrievalAgent:
-    """
-    Agent that retrieves relevant technical standards, guidelines, and references.
-    Provides context and citations for decision-making.
-    """
-    
+    """Retrieves IEEE standards and best practices."""
+
     # Standard reference database
     STANDARD_REFERENCES = {
         "voltage_limits": {
@@ -59,68 +54,62 @@ class RetrievalAgent:
             "citation": "IEEE Std 1434-2014"
         }
     }
-    
+
     def __init__(self, knowledge_base_path: Optional[Path] = None):
-        """
-        Initialize Retrieval Agent.
-        
-        Args:
-            knowledge_base_path: Path to local knowledge base directory
-        """
         self.knowledge_base_path = knowledge_base_path
         self.retrieved_cache: Dict[str, Any] = {}
-        
+
         logger.info("RetrievalAgent initialized")
-    
+
     def retrieve_relevant_standards(self, context: Dict[str, Any]) -> List[Dict[str, str]]:
         """
         Retrieve relevant standards based on context.
-        
+
         Args:
             context: Context including contingency type, violations, etc.
-        
+
         Returns:
             List of relevant standard references
         """
         logger.info("Retrieving relevant standards...")
-        
+
         relevant_standards = []
-        
+
         # Always include voltage limits if voltage violations present
         violations = context.get('violations', [])
         if any('voltage' in v.lower() or 'pu' in v for v in violations):
             relevant_standards.append(self.STANDARD_REFERENCES['voltage_limits'])
-        
+
         # Include N-1 standard for contingency analysis
         if context.get('contingency_type'):
             relevant_standards.append(self.STANDARD_REFERENCES['n_minus_1'])
-        
+
         # Include thermal/loading standards if thermal violations
         if any('loading' in v.lower() or '%' in v for v in violations):
             relevant_standards.append(self.STANDARD_REFERENCES['protection_coordination'])
-        
+
         # Include load shedding standard if load shedding proposed
         action_type = context.get('action_type', '')
         if 'load' in action_type.lower() or 'shed' in action_type.lower():
             relevant_standards.append(self.STANDARD_REFERENCES['load_shedding'])
-        
+
         # Include switching standard if switching operations proposed
         if 'switch' in action_type.lower():
             relevant_standards.append(self.STANDARD_REFERENCES['switching_operations'])
-        
+
         # Include reliability standard
         relevant_standards.append(self.STANDARD_REFERENCES['distribution_reliability'])
-        
+
         logger.info(f"Retrieved {len(relevant_standards)} relevant standards")
         return relevant_standards
-    
+
     def get_best_practices(self, action_type: str) -> Dict[str, Any]:
         """
         Get best practices for a specific action type.
-        
+
         Args:
             action_type: Type of action being performed
-        
+
         Returns:
             Best practices information
         """
@@ -174,24 +163,24 @@ class RetrievalAgent:
                 ]
             }
         }
-        
+
         return best_practices.get(action_type, best_practices["multiple"])
-    
+
     def retrieve_historical_cases(self, contingency_type: str,
                                   network_characteristics: Dict[str, Any]) -> List[Dict[str, Any]]:
         """
         Retrieve similar historical contingency cases.
-        
+
         Args:
             contingency_type: Type of contingency
             network_characteristics: Network properties
-        
+
         Returns:
             List of historical case summaries
         """
         # In a real system, this would query a database of historical events
         # For now, return example cases
-        
+
         historical_cases = [
             {
                 "case_id": "HIST_001",
@@ -210,17 +199,17 @@ class RetrievalAgent:
                 "lessons_learned": "Staged approach prevented over-correction"
             }
         ]
-        
+
         logger.info(f"Retrieved {len(historical_cases)} historical cases")
         return historical_cases
-    
+
     def get_constraint_references(self, constraint_type: str) -> Dict[str, Any]:
         """
         Get detailed reference information for a constraint type.
-        
+
         Args:
             constraint_type: Type of constraint (voltage, thermal, etc.)
-        
+
         Returns:
             Constraint reference information
         """
@@ -247,38 +236,38 @@ class RetrievalAgent:
                 "monitoring": "Frequency monitoring at generation sites"
             }
         }
-        
+
         return constraint_refs.get(constraint_type, {})
-    
+
     def format_references_for_report(self, context: Dict[str, Any]) -> str:
         """
         Format references for inclusion in report.
-        
+
         Args:
             context: Analysis context
-        
+
         Returns:
             Formatted reference section
         """
         standards = self.retrieve_relevant_standards(context)
-        
+
         references_text = "## Technical References\n\n"
-        
+
         for i, std in enumerate(standards, 1):
             references_text += f"{i}. **{std['title']}**\n"
             references_text += f"   - Application: {std['application']}\n"
             references_text += f"   - Citation: {std['citation']}\n"
             references_text += f"   - Summary: {std['summary']}\n\n"
-        
+
         return references_text
-    
+
     def get_citation_list(self, context: Dict[str, Any]) -> List[str]:
         """
         Get simple citation list for state management.
-        
+
         Args:
             context: Analysis context
-        
+
         Returns:
             List of citation strings
         """
@@ -289,12 +278,12 @@ class RetrievalAgent:
 if __name__ == "__main__":
     # Test Retrieval Agent
     from src.config import load_configuration
-    
+
     config, constraints, paths = load_configuration()
-    
+
     # Initialize agent
     agent = RetrievalAgent(knowledge_base_path=paths.knowledge_base)
-    
+
     # Test context
     test_context = {
         'contingency_type': 'line_outage',
@@ -304,25 +293,25 @@ if __name__ == "__main__":
         ],
         'action_type': 'switch_line'
     }
-    
+
     print("\n=== Relevant Standards ===")
     standards = agent.retrieve_relevant_standards(test_context)
     for std in standards:
         print(f"\n{std['title']}")
         print(f"  Application: {std['application']}")
         print(f"  Citation: {std['citation']}")
-    
+
     print("\n=== Best Practices ===")
     practices = agent.get_best_practices('switch_line')
     print(f"\n{practices['title']}")
     print("\nPractices:")
     for p in practices['practices']:
         print(f"  - {p}")
-    
+
     print("\n=== Formatted References ===")
     formatted = agent.format_references_for_report(test_context)
     print(formatted)
-    
+
     print("\n=== Citation List ===")
     citations = agent.get_citation_list(test_context)
     for cite in citations:

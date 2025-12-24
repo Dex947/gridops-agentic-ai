@@ -1,24 +1,19 @@
-"""
-Planner Agent - Generates candidate switching and load-shedding strategies.
-"""
+"""Planner Agent for generating reconfiguration strategies."""
 
-from typing import Dict, Any, List, Optional
-from langchain_core.messages import SystemMessage, HumanMessage
-from langchain_openai import ChatOpenAI
-from langchain_anthropic import ChatAnthropic
-from loguru import logger
 import json
+from typing import Any, Dict, List, Optional
 
-from src.core.state_manager import SystemState, ActionProposal
-from src.tools.network_analysis import NetworkAnalyzer, identify_reconfiguration_options
+from langchain_anthropic import ChatAnthropic
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from loguru import logger
+
+from src.core.state_manager import ActionProposal, SystemState
 
 
 class PlannerAgent:
-    """
-    Agent responsible for generating reconfiguration strategies.
-    Uses LLM to reason about contingencies and propose solutions.
-    """
-    
+    """Uses LLM to propose switching and load-shedding actions."""
+
     SYSTEM_PROMPT = """You are an expert power systems engineer specializing in distribution network operations and contingency management.
 
 Your role is to analyze network contingencies and propose safe reconfiguration strategies including:
@@ -41,82 +36,64 @@ You will receive:
 - Available reconfiguration options
 
 Generate 2-5 candidate action plans with detailed justification."""
-    
+
     def __init__(self, model_name: str = "gpt-4-turbo-preview",
                  provider: str = "openai",
                  temperature: float = 0.1,
                  api_key: Optional[str] = None):
-        """
-        Initialize Planner Agent.
-        
-        Args:
-            model_name: LLM model name
-            provider: LLM provider ("openai" or "anthropic")
-            temperature: Sampling temperature
-            api_key: API key for the LLM provider
-        """
         self.model_name = model_name
         self.provider = provider
         self.temperature = temperature
-        
+
         # Initialize LLM
         if provider == "openai":
             self.llm = ChatOpenAI(
-                model=model_name, 
+                model=model_name,
                 temperature=temperature,
                 api_key=api_key
             )
         elif provider == "anthropic":
             self.llm = ChatAnthropic(
-                model=model_name, 
+                model=model_name,
                 temperature=temperature,
                 api_key=api_key
             )
         else:
             raise ValueError(f"Unknown provider: {provider}")
-        
+
         logger.info(f"PlannerAgent initialized with {provider}/{model_name}")
-    
-    def generate_action_plans(self, state: SystemState, 
+
+    def generate_action_plans(self, state: SystemState,
                              network_data: Dict[str, Any]) -> List[ActionProposal]:
-        """
-        Generate candidate action plans for the contingency.
-        
-        Args:
-            state: Current system state
-            network_data: Network topology and analysis data
-        
-        Returns:
-            List of action proposals
-        """
+        """Generate 2-5 candidate action plans using LLM."""
         logger.info("Generating action plans...")
-        
+
         # Prepare context for LLM
         context = self._prepare_context(state, network_data)
-        
+
         # Create messages
         messages = [
             SystemMessage(content=self.SYSTEM_PROMPT),
             HumanMessage(content=context)
         ]
-        
+
         try:
             # Get LLM response
             response = self.llm.invoke(messages)
-            
+
             # Parse response into action proposals
             proposals = self._parse_llm_response(response.content, state)
-            
+
             logger.info(f"Generated {len(proposals)} action proposals")
             return proposals
-        
+
         except Exception as e:
             logger.error(f"Error generating action plans: {e}")
             return []
-    
+
     def _prepare_context(self, state: SystemState, network_data: Dict[str, Any]) -> str:
-        """Prepare context string for LLM."""
-        
+        """Build prompt context from state and network data."""
+
         context = f"""# NETWORK CONTINGENCY ANALYSIS REQUEST
 
 ## Network Information
@@ -154,13 +131,13 @@ Generate 2-5 candidate action plans to resolve this contingency. For each plan, 
 6. Reasoning (why this approach makes sense)
 
 Return your response as a valid JSON array of action plans."""
-        
+
         return context
-    
+
     def _parse_llm_response(self, response: str, state: SystemState) -> List[ActionProposal]:
         """Parse LLM response into ActionProposal objects."""
         proposals = []
-        
+
         try:
             # Try to extract JSON from response
             # LLMs often wrap JSON in markdown code blocks
@@ -174,10 +151,10 @@ Return your response as a valid JSON array of action plans."""
                 json_str = response[json_start:json_end].strip()
             else:
                 json_str = response.strip()
-            
+
             # Parse JSON
             plans = json.loads(json_str)
-            
+
             # Convert to ActionProposal objects
             for i, plan in enumerate(plans):
                 proposal = ActionProposal(
@@ -190,11 +167,11 @@ Return your response as a valid JSON array of action plans."""
                     proposed_by="PlannerAgent"
                 )
                 proposals.append(proposal)
-        
+
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse LLM response as JSON: {e}")
             logger.debug(f"Response: {response}")
-            
+
             # Fallback: Create a generic proposal
             proposals.append(ActionProposal(
                 action_id="fallback_plan",
@@ -205,26 +182,26 @@ Return your response as a valid JSON array of action plans."""
                 reasoning="Fallback plan due to parsing error",
                 proposed_by="PlannerAgent"
             ))
-        
+
         except Exception as e:
             logger.error(f"Error parsing proposals: {e}")
-        
+
         return proposals
-    
-    def refine_action_plan(self, state: SystemState, 
+
+    def refine_action_plan(self, state: SystemState,
                           evaluation_feedback: Dict[str, Any]) -> Optional[ActionProposal]:
         """
         Refine an action plan based on evaluation feedback.
-        
+
         Args:
             state: Current system state
             evaluation_feedback: Feedback from constraint checker
-        
+
         Returns:
             Refined action proposal or None
         """
         logger.info("Refining action plan based on feedback...")
-        
+
         refinement_prompt = f"""# ACTION PLAN REFINEMENT
 
 The following action plan was evaluated and needs refinement:
@@ -238,23 +215,23 @@ The following action plan was evaluated and needs refinement:
 ## TASK
 Modify the action plan to address the feedback while maintaining safety and effectiveness.
 Return the refined plan as a valid JSON object with the same structure as the original."""
-        
+
         messages = [
             SystemMessage(content=self.SYSTEM_PROMPT),
             HumanMessage(content=refinement_prompt)
         ]
-        
+
         try:
             response = self.llm.invoke(messages)
             proposals = self._parse_llm_response(response.content, state)
-            
+
             if proposals:
                 logger.info("Action plan refined successfully")
                 return proposals[0]
-            
+
         except Exception as e:
             logger.error(f"Error refining action plan: {e}")
-        
+
         return None
 
 
@@ -262,16 +239,16 @@ if __name__ == "__main__":
     # Test planner agent
     from src.config import load_configuration
     from src.core.state_manager import create_initial_state
-    
+
     config, constraints, paths = load_configuration()
-    
+
     # Create test state
     state = create_initial_state(
         network_name="ieee_33",
         contingency_desc="Line 5 outage causes undervoltage at downstream buses",
         max_iterations=10
     )
-    
+
     state['contingency_type'] = "line_outage"
     state['contingency_elements'] = [5]
     state['constraint_violations'] = [
@@ -279,7 +256,7 @@ if __name__ == "__main__":
         "Bus 11: 0.91 pu (undervoltage)",
         "Line 8: 105% loading"
     ]
-    
+
     # Mock network data
     network_data = {
         'num_buses': 33,
@@ -293,7 +270,7 @@ if __name__ == "__main__":
             }
         ]
     }
-    
+
     # Test planner (requires API key)
     try:
         planner = PlannerAgent(
@@ -301,13 +278,13 @@ if __name__ == "__main__":
             provider=config.llm_provider,
             temperature=config.temperature
         )
-        
+
         proposals = planner.generate_action_plans(state, network_data)
-        
+
         print("\n=== Generated Action Plans ===")
         for proposal in proposals:
             print(json.dumps(proposal.to_dict(), indent=2))
             print()
-    
+
     except Exception as e:
         logger.error(f"Could not test planner (API key may be missing): {e}")

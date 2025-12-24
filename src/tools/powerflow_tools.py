@@ -3,11 +3,112 @@ Power flow tools for agent use.
 Provides callable functions for power system analysis and modification.
 """
 
-from typing import Dict, Any, List, Tuple, Optional
-import pandapower as pp
-import numpy as np
-from loguru import logger
 from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple, Set
+
+import pandapower as pp
+from loguru import logger
+
+
+class ValidationError(Exception):
+    """Raised when input validation fails."""
+    pass
+
+
+def validate_line_ids(net: pp.pandapowerNet, line_ids: List[int]) -> Tuple[List[int], List[int]]:
+    """
+    Validate line IDs exist in the network.
+    
+    Args:
+        net: pandapower network
+        line_ids: List of line IDs to validate
+        
+    Returns:
+        Tuple of (valid_ids, invalid_ids)
+    """
+    valid_ids = []
+    invalid_ids = []
+    existing_ids: Set[int] = set(net.line.index.tolist())
+    
+    for lid in line_ids:
+        if lid in existing_ids:
+            valid_ids.append(lid)
+        else:
+            invalid_ids.append(lid)
+            
+    return valid_ids, invalid_ids
+
+
+def validate_bus_ids(net: pp.pandapowerNet, bus_ids: List[int]) -> Tuple[List[int], List[int]]:
+    """
+    Validate bus IDs exist in the network.
+    
+    Args:
+        net: pandapower network
+        bus_ids: List of bus IDs to validate
+        
+    Returns:
+        Tuple of (valid_ids, invalid_ids)
+    """
+    valid_ids = []
+    invalid_ids = []
+    existing_ids: Set[int] = set(net.bus.index.tolist())
+    
+    for bid in bus_ids:
+        if bid in existing_ids:
+            valid_ids.append(bid)
+        else:
+            invalid_ids.append(bid)
+            
+    return valid_ids, invalid_ids
+
+
+def validate_load_ids(net: pp.pandapowerNet, load_ids: List[int]) -> Tuple[List[int], List[int]]:
+    """
+    Validate load IDs exist in the network.
+    
+    Args:
+        net: pandapower network
+        load_ids: List of load IDs to validate
+        
+    Returns:
+        Tuple of (valid_ids, invalid_ids)
+    """
+    valid_ids = []
+    invalid_ids = []
+    existing_ids: Set[int] = set(net.load.index.tolist())
+    
+    for lid in load_ids:
+        if lid in existing_ids:
+            valid_ids.append(lid)
+        else:
+            invalid_ids.append(lid)
+            
+    return valid_ids, invalid_ids
+
+
+def validate_switch_ids(net: pp.pandapowerNet, switch_ids: List[int]) -> Tuple[List[int], List[int]]:
+    """
+    Validate switch IDs exist in the network.
+    
+    Args:
+        net: pandapower network
+        switch_ids: List of switch IDs to validate
+        
+    Returns:
+        Tuple of (valid_ids, invalid_ids)
+    """
+    valid_ids = []
+    invalid_ids = []
+    existing_ids: Set[int] = set(net.switch.index.tolist()) if len(net.switch) > 0 else set()
+    
+    for sid in switch_ids:
+        if sid in existing_ids:
+            valid_ids.append(sid)
+        else:
+            invalid_ids.append(sid)
+            
+    return valid_ids, invalid_ids
 
 
 @dataclass
@@ -21,7 +122,7 @@ class PowerFlowResults:
     violations: List[str]
     bus_voltages: Dict[int, float]
     line_loadings: Dict[int, float]
-    
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
         return {
@@ -34,7 +135,7 @@ class PowerFlowResults:
             "bus_voltages": {int(k): float(v) for k, v in self.bus_voltages.items()},
             "line_loadings": {int(k): float(v) for k, v in self.line_loadings.items()}
         }
-    
+
     def get_summary_text(self) -> str:
         """Get human-readable summary."""
         status = "✓ Converged" if self.converged else "✗ Did not converge"
@@ -49,54 +150,54 @@ Violations: {len(self.violations)}
             text += "\nConstraint Violations:\n"
             for v in self.violations[:10]:  # Limit to 10
                 text += f"  - {v}\n"
-        
+
         return text
 
 
 class PowerFlowTool:
     """Tool for running power flow analysis."""
-    
+
     def __init__(self, voltage_limits: Tuple[float, float] = (0.95, 1.05),
                  thermal_limit_percent: float = 100.0):
         """
         Initialize power flow tool.
-        
+
         Args:
             voltage_limits: (min, max) voltage in per-unit
             thermal_limit_percent: Maximum allowed line loading
         """
         self.v_min, self.v_max = voltage_limits
         self.thermal_limit = thermal_limit_percent
-    
-    def run(self, net: pp.pandapowerNet, 
+
+    def run(self, net: pp.pandapowerNet,
             algorithm: str = "bfsw") -> PowerFlowResults:
         """
         Run power flow analysis.
-        
+
         Args:
             net: pandapower network
             algorithm: Power flow algorithm ("bfsw", "nr", "gs")
-        
+
         Returns:
             Power flow results
         """
         try:
             pp.runpp(net, algorithm=algorithm, calculate_voltage_angles=False)
             converged = net.converged
-            
+
             if not converged:
                 logger.warning("Power flow did not converge")
         except Exception as e:
             logger.error(f"Power flow execution failed: {e}")
             converged = False
-        
+
         return self._extract_results(net, converged)
-    
-    def _extract_results(self, net: pp.pandapowerNet, 
+
+    def _extract_results(self, net: pp.pandapowerNet,
                         converged: bool) -> PowerFlowResults:
         """Extract and analyze power flow results."""
         violations = []
-        
+
         # Initialize default values
         max_loading = 0.0
         min_voltage = 1.0
@@ -104,36 +205,36 @@ class PowerFlowTool:
         total_losses = 0.0
         bus_voltages = {}
         line_loadings = {}
-        
+
         if converged:
             # Extract bus voltages
             if len(net.res_bus) > 0:
                 min_voltage = net.res_bus.vm_pu.min()
                 max_voltage = net.res_bus.vm_pu.max()
                 bus_voltages = net.res_bus.vm_pu.to_dict()
-                
+
                 # Check voltage violations
                 for idx, row in net.res_bus.iterrows():
                     if row.vm_pu < self.v_min:
                         violations.append(f"Bus {idx}: {row.vm_pu:.4f} pu (< {self.v_min} pu)")
                     elif row.vm_pu > self.v_max:
                         violations.append(f"Bus {idx}: {row.vm_pu:.4f} pu (> {self.v_max} pu)")
-            
+
             # Extract line loadings
             if len(net.res_line) > 0:
                 max_loading = net.res_line.loading_percent.max()
                 line_loadings = net.res_line.loading_percent.to_dict()
-                
+
                 # Check thermal violations
                 for idx, row in net.res_line.iterrows():
                     if row.loading_percent > self.thermal_limit:
                         violations.append(f"Line {idx}: {row.loading_percent:.2f}% loading (> {self.thermal_limit}%)")
-                
+
                 # Calculate losses
                 total_losses = net.res_line.pl_mw.sum()
         else:
             violations.append("Power flow did not converge")
-        
+
         return PowerFlowResults(
             converged=converged,
             max_line_loading_percent=max_loading,
@@ -152,12 +253,12 @@ def run_powerflow_analysis(net: pp.pandapowerNet,
     """
     Standalone function to run power flow analysis.
     Designed to be called by LLM agents.
-    
+
     Args:
         net: pandapower network
         voltage_limits: (min, max) voltage in per-unit
         thermal_limit: Maximum allowed line loading percentage
-    
+
     Returns:
         Dictionary with power flow results
     """
@@ -171,27 +272,33 @@ def apply_switching_action(net: pp.pandapowerNet,
                           explicit_switches: Optional[List[Dict[str, Any]]] = None) -> Dict[str, Any]:
     """
     Apply switching actions to the network.
-    
+
     Args:
         net: pandapower network (will be modified)
         line_switches: List of line switching actions
             Format: [{"line_id": int, "close": bool}, ...]
         explicit_switches: List of explicit switch actions
             Format: [{"switch_id": int, "close": bool}, ...]
-    
+
     Returns:
         Dictionary with applied actions and results
     """
     applied_actions = []
-    
+
     try:
-        # Apply line switches
+        # Apply line switches with validation
         if line_switches:
+            line_ids_to_validate = [action["line_id"] for action in line_switches]
+            valid_line_ids, invalid_line_ids = validate_line_ids(net, line_ids_to_validate)
+            
+            if invalid_line_ids:
+                logger.warning(f"Invalid line IDs detected: {invalid_line_ids}")
+            
             for action in line_switches:
                 line_id = action["line_id"]
                 close = action["close"]
-                
-                if line_id < len(net.line):
+
+                if line_id in valid_line_ids:
                     net.line.at[line_id, "in_service"] = close
                     applied_actions.append({
                         "type": "line_switch",
@@ -201,21 +308,27 @@ def apply_switching_action(net: pp.pandapowerNet,
                     })
                     logger.info(f"Line {line_id} {'closed' if close else 'opened'}")
                 else:
-                    logger.warning(f"Invalid line ID: {line_id}")
+                    logger.warning(f"Invalid line ID: {line_id} (not in network index)")
                     applied_actions.append({
                         "type": "line_switch",
                         "line_id": line_id,
                         "success": False,
-                        "error": "Invalid line ID"
+                        "error": f"Invalid line ID: {line_id} not found in network"
                     })
-        
-        # Apply explicit switches
+
+        # Apply explicit switches with validation
         if explicit_switches:
+            switch_ids_to_validate = [action["switch_id"] for action in explicit_switches]
+            valid_switch_ids, invalid_switch_ids = validate_switch_ids(net, switch_ids_to_validate)
+            
+            if invalid_switch_ids:
+                logger.warning(f"Invalid switch IDs detected: {invalid_switch_ids}")
+            
             for action in explicit_switches:
                 switch_id = action["switch_id"]
                 close = action["close"]
-                
-                if switch_id < len(net.switch):
+
+                if switch_id in valid_switch_ids:
                     net.switch.at[switch_id, "closed"] = close
                     applied_actions.append({
                         "type": "explicit_switch",
@@ -225,20 +338,20 @@ def apply_switching_action(net: pp.pandapowerNet,
                     })
                     logger.info(f"Switch {switch_id} {'closed' if close else 'opened'}")
                 else:
-                    logger.warning(f"Invalid switch ID: {switch_id}")
+                    logger.warning(f"Invalid switch ID: {switch_id} (not in network index)")
                     applied_actions.append({
                         "type": "explicit_switch",
                         "switch_id": switch_id,
                         "success": False,
-                        "error": "Invalid switch ID"
+                        "error": f"Invalid switch ID: {switch_id} not found in network"
                     })
-        
+
         return {
             "success": True,
             "applied_actions": applied_actions,
             "total_actions": len(applied_actions)
         }
-    
+
     except Exception as e:
         logger.error(f"Error applying switching actions: {e}")
         return {
@@ -253,45 +366,52 @@ def apply_load_shedding(net: pp.pandapowerNet,
                        max_shed_percent: float = 30.0) -> Dict[str, Any]:
     """
     Apply load shedding to the network.
-    
+
     Args:
         net: pandapower network (will be modified)
         load_reductions: List of load reduction actions
             Format: [{"load_id": int, "reduction_percent": float}, ...]
         max_shed_percent: Maximum allowed load shedding per load
-    
+
     Returns:
         Dictionary with applied load shedding and totals
     """
     applied_reductions = []
     total_p_shed = 0.0
     total_q_shed = 0.0
+
+    # Validate load IDs upfront
+    load_ids_to_validate = [action["load_id"] for action in load_reductions]
+    valid_load_ids, invalid_load_ids = validate_load_ids(net, load_ids_to_validate)
+    
+    if invalid_load_ids:
+        logger.warning(f"Invalid load IDs detected: {invalid_load_ids}")
     
     try:
         for action in load_reductions:
             load_id = action["load_id"]
             reduction = min(action["reduction_percent"], max_shed_percent)
-            
-            if load_id < len(net.load):
+
+            if load_id in valid_load_ids:
                 # Get original load
                 original_p = net.load.at[load_id, "p_mw"]
                 original_q = net.load.at[load_id, "q_mvar"]
-                
+
                 # Calculate reduction
                 reduction_factor = 1.0 - (reduction / 100.0)
                 new_p = original_p * reduction_factor
                 new_q = original_q * reduction_factor
-                
+
                 # Apply reduction
                 net.load.at[load_id, "p_mw"] = new_p
                 net.load.at[load_id, "q_mvar"] = new_q
-                
+
                 p_shed = original_p - new_p
                 q_shed = original_q - new_q
-                
+
                 total_p_shed += p_shed
                 total_q_shed += q_shed
-                
+
                 applied_reductions.append({
                     "load_id": load_id,
                     "reduction_percent": reduction,
@@ -301,13 +421,13 @@ def apply_load_shedding(net: pp.pandapowerNet,
                 })
                 logger.info(f"Load {load_id} reduced by {reduction:.1f}% ({p_shed:.3f} MW)")
             else:
-                logger.warning(f"Invalid load ID: {load_id}")
+                logger.warning(f"Invalid load ID: {load_id} (not in network index)")
                 applied_reductions.append({
                     "load_id": load_id,
                     "success": False,
-                    "error": "Invalid load ID"
+                    "error": f"Invalid load ID: {load_id} not found in network"
                 })
-        
+
         return {
             "success": True,
             "applied_reductions": applied_reductions,
@@ -315,7 +435,7 @@ def apply_load_shedding(net: pp.pandapowerNet,
             "total_q_shed_mvar": float(total_q_shed),
             "num_loads_affected": len(applied_reductions)
         }
-    
+
     except Exception as e:
         logger.error(f"Error applying load shedding: {e}")
         return {
@@ -331,19 +451,19 @@ def validate_action_feasibility(net: pp.pandapowerNet,
                                thermal_limit: float = 100.0) -> Dict[str, Any]:
     """
     Validate if a proposed action plan is feasible.
-    
+
     Args:
         net: pandapower network (will be copied, not modified)
         action_plan: Dictionary containing proposed actions
         voltage_limits: Voltage limits for validation
         thermal_limit: Thermal limit for validation
-    
+
     Returns:
         Validation results with feasibility determination
     """
     # Create a copy for testing
     net_test = net.deepcopy()
-    
+
     try:
         # Apply proposed actions
         if "line_switches" in action_plan:
@@ -354,7 +474,7 @@ def validate_action_feasibility(net: pp.pandapowerNet,
                     "reason": "Failed to apply switching actions",
                     "details": result
                 }
-        
+
         if "load_reductions" in action_plan:
             result = apply_load_shedding(net_test, load_reductions=action_plan["load_reductions"])
             if not result["success"]:
@@ -363,19 +483,19 @@ def validate_action_feasibility(net: pp.pandapowerNet,
                     "reason": "Failed to apply load shedding",
                     "details": result
                 }
-        
+
         # Run power flow
         pf_results = run_powerflow_analysis(net_test, voltage_limits, thermal_limit)
-        
+
         # Determine feasibility
         feasible = pf_results["converged"] and len(pf_results["violations"]) == 0
-        
+
         return {
             "feasible": feasible,
             "powerflow_results": pf_results,
             "reason": "Action plan is feasible" if feasible else "Constraints violated or non-convergence"
         }
-    
+
     except Exception as e:
         logger.error(f"Error validating action feasibility: {e}")
         return {
@@ -387,16 +507,17 @@ def validate_action_feasibility(net: pp.pandapowerNet,
 
 if __name__ == "__main__":
     # Test power flow tools
+    import json
+
     from src.config import load_configuration
     from src.core.network_loader import NetworkLoader
-    import json
-    
+
     config, constraints, paths = load_configuration()
-    
+
     # Load network
     loader = NetworkLoader(networks_path=paths.networks)
     net = loader.load_network("ieee_33")
-    
+
     # Test power flow analysis
     print("\n=== Power Flow Analysis ===")
     pf_tool = PowerFlowTool(
@@ -405,7 +526,7 @@ if __name__ == "__main__":
     )
     results = pf_tool.run(net)
     print(results.get_summary_text())
-    
+
     # Test switching action
     print("\n=== Test Switching Action ===")
     net_copy = net.deepcopy()
@@ -414,7 +535,7 @@ if __name__ == "__main__":
         line_switches=[{"line_id": 5, "close": False}]
     )
     print(json.dumps(switch_result, indent=2))
-    
+
     # Run power flow after switching
     results_after = pf_tool.run(net_copy)
     print("\nPower Flow After Switching:")

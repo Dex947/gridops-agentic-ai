@@ -4,6 +4,156 @@ All notable changes to the GridOps Agentic AI System will be documented in this 
 
 ## [Unreleased]
 
+## [1.0.4] - 2025-12-24
+
+### Added
+- **Protection Coordination Module** (`src/tools/protection_coordination.py`)
+  - `ProtectionDevice` dataclass with IEC time-current curves
+  - `ProtectionCoordination` class for coordination analysis
+  - Support for fuse, recloser, relay, breaker, sectionalizer devices
+  - `TripCharacteristic` enum: extremely_inverse, very_inverse, inverse, definite_time
+  - Short-circuit analysis integration with pandapower
+  - `create_default_protection_scheme()` for automatic device placement
+  - Post-reconfiguration verification
+  - Coordination time interval (CTI) checking
+  - Device interrupting capacity validation
+
+- **Reliability Indices Module** (`src/tools/reliability_indices.py`)
+  - IEEE 1366 standard reliability indices:
+    - SAIDI (System Average Interruption Duration Index)
+    - SAIFI (System Average Interruption Frequency Index)
+    - CAIDI (Customer Average Interruption Duration Index)
+    - ASAI (Average Service Availability Index)
+    - MAIFI (Momentary Average Interruption Frequency Index)
+    - CEMI (Customers Experiencing Multiple Interruptions)
+  - `CustomerData` dataclass for load point customer tracking
+  - `OutageEvent` dataclass with sustained/momentary classification
+  - `ReliabilityCalculator` class for index computation
+  - Contingency impact estimation
+  - Customer-minutes interrupted (CMI) tracking
+
+- **Historical Case Database** (`src/core/case_database.py`)
+  - `HistoricalCase` dataclass for contingency case storage
+  - `CaseDatabase` class with JSON persistence
+  - Similarity-based case search
+  - Action success rate tracking
+  - Recommended actions based on historical data
+  - Operator feedback integration (rating 1-5)
+  - ML training data export
+  - Workflow state recording
+
+- **New Test Suites**
+  - `tests/unit/test_protection_coordination.py` (18 tests)
+  - `tests/unit/test_reliability_indices.py` (25 tests)
+  - `tests/unit/test_case_database.py` (24 tests)
+
+- **Input Validation Functions** (`src/tools/powerflow_tools.py`)
+  - `validate_line_ids()` - Validate line IDs exist in network
+  - `validate_bus_ids()` - Validate bus IDs exist in network
+  - `validate_load_ids()` - Validate load IDs exist in network
+  - `validate_switch_ids()` - Validate switch IDs exist in network
+  - `ValidationError` exception class for validation failures
+- **Action Plan Schema Validation** (`src/core/state_manager.py`)
+  - `validate_action_plan()` - Comprehensive schema validation for action plans
+  - `validate_and_sanitize_action_plan()` - Validate and add default values
+  - `ActionPlanValidationError` exception class
+  - Validation for action types, target elements, priority, and costs
+- **Wind Generation Profiles** (`src/tools/timeseries_analysis.py`)
+  - `GenerationProfile.create_wind_profile()` - Wind profiles with patterns (low, moderate, high, variable)
+  - `GenerationProfile.create_combined_renewable_profile()` - Combined solar+wind profiles
+- **Battery Dispatch Optimization** (`src/tools/der_integration.py`)
+  - `BatteryState` dataclass for battery state tracking
+  - `BatteryDispatchResult` dataclass for dispatch results
+  - `DERIntegration.optimize_battery_dispatch()` - Multi-mode battery optimization
+  - Dispatch modes: peak_shaving, arbitrage, voltage_support, auto
+  - SOC tracking and energy throughput calculation
+- **Configurable Analysis Parameters** (`src/config.py`)
+  - `max_reconfiguration_combinations` - Limit for topology optimization
+  - `max_contingency_combinations` - Limit for N-k analysis
+  - `parallel_workers` - Number of parallel workers
+  - `der_curtailment_step` - DER curtailment step size
+  - `hosting_capacity_step_kw` - Hosting capacity calculation step
+  - `timeseries_default_timestep_minutes` - Default time-series timestep
+  - `api_key_rotation_days` - Security: API key rotation period
+  - `mask_api_keys_in_logs` - Security: Mask API keys in logs
+
+### Changed
+- **Updated Exports** (`src/tools/__init__.py`)
+  - Added protection coordination exports
+  - Added reliability indices exports
+- **Updated Exports** (`src/core/__init__.py`)
+  - Added case database exports
+  - Added action plan validation exports
+
+- **Enhanced Input Validation**
+  - `apply_switching_action()` now validates line IDs before applying
+  - `apply_load_shedding()` now validates load IDs before applying
+  - `NetworkAnalyzer.find_alternative_paths()` validates bus IDs
+  - `NetworkAnalyzer.get_buses_downstream()` validates bus ID
+  - `NetworkReconfiguration.apply_switch_action()` returns success/failure
+- **Configurable Reconfiguration** (`src/tools/reconfiguration.py`)
+  - `NetworkReconfiguration.__init__()` accepts `max_combinations` and `max_iterations`
+  - `exhaustive_search()` uses instance `max_combinations` as default
+- **Updated Exports** (`src/tools/__init__.py`)
+  - Added `BatteryState`, `BatteryDispatchResult` exports
+  - Added validation function exports
+
+## [1.0.3] - 2025-12-24
+
+### Fixed
+- **Line loading always 0%**: Fixed unrealistic line ratings in IEEE test networks (max_i_ka = 99999 kA)
+  - Added `_fix_line_ratings()` method to NetworkLoader
+  - Automatically calculates realistic ratings based on actual power flow currents
+### Added
+- **Optimal Power Flow (OPF)**: New `src/tools/opf_tools.py` module
+  - AC OPF for optimal generator dispatch and loss minimization
+  - DC OPF for fast linear approximations
+  - Cost function optimization (min_loss, min_generation_cost, min_load_shedding)
+  - Voltage setpoint optimization
+  - Loss sensitivity analysis
+- **N-k Contingency Analysis**: Enhanced `src/core/contingency_simulator.py`
+  - N-2, N-3, and configurable N-k analysis
+  - Parallel contingency evaluation with ThreadPoolExecutor
+  - Contingency ranking by severity score
+  - Smart combination limiting for large networks
+- **Network Reconfiguration Optimization**: New `src/tools/reconfiguration.py` module
+  - Branch exchange algorithm for loss minimization
+  - Exhaustive search for small networks
+  - Radiality constraint enforcement
+  - Multiple objectives: min_loss, load_balancing, min_voltage_deviation
+  - Tie switch and sectionalizing switch identification
+- **DER Integration**: New `src/tools/der_integration.py` module
+  - Solar PV, wind, battery storage, and other DER types
+  - Hosting capacity calculation
+  - DER dispatch optimization with curtailment
+  - Impact analysis (voltage rise, reverse power flow)
+- **Time-Series Analysis**: New `src/tools/timeseries_analysis.py` module
+  - Daily load profiles (residential, industrial)
+  - Solar generation profiles
+  - 24-hour power flow simulation
+  - Peak identification and energy calculations
+  - Critical period detection
+- **Advanced Features Guide**: `docs/user-guide/advanced-features.md`
+- **Documentation restructure**: Created `docs/` folder with modular documentation
+  - `docs/index.md` - Documentation home
+  - `docs/getting-started/` - Installation, quickstart, configuration
+  - `docs/user-guide/` - CLI reference, networks guide
+  - `docs/architecture/` - System overview
+  - `docs/case-studies/` - IEEE 33-bus analysis example
+- **Pytest test suite**: 203 unit tests covering all modules (79% coverage)
+  - `tests/conftest.py` - Shared fixtures
+  - `tests/unit/test_network_loader.py` - Network loading tests
+  - `tests/unit/test_powerflow_tools.py` - Power flow tests
+  - `tests/unit/test_contingency_simulator.py` - Contingency tests
+  - `tests/unit/test_state_manager.py` - State management tests
+  - `tests/unit/test_network_analysis.py` - Network analysis tests
+- **GitHub Actions CI**: `.github/workflows/ci.yml` with test, lint, and validate jobs
+- **pyproject.toml**: Unified configuration for pytest, ruff, coverage, and mypy
+
+### Changed
+- **Code quality**: Fixed all ruff linting issues (881 auto-fixed, 2 manual fixes)
+- **NetworkLoader**: Now automatically fixes unrealistic line ratings on load
+
 ## [1.0.2] - 2025-10-08
 
 ### Fixed
